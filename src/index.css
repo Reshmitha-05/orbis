@@ -1,0 +1,384 @@
+/* ==========================================================================
+   ORBIS — GitHub Repository Intelligence Platform
+   Design Tokens & Editorial Style System
+   ========================================================================== */
+
+:root {
+  /* Core Brand Palette - Developer Tool Aesthetic */
+  --color-navy: #24364B;
+  --color-navy-dark: #1A2838;
+  --color-navy-deep: #121D29;
+  --color-teal: #438A9A;
+  --color-teal-light: #5AA1B1;
+  --color-teal-dark: #326B78;
+  --color-icy-blue: #E8F2FA;
+  --color-icy-soft: #F2F7FC;
+  --color-icy-lightest: #F8FAFD;
+  --color-white: #FFFFFF;
+
+  /* Semantic UI Surfaces & Text */
+  --bg-primary: #F8FAFD;
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #FFFFFF;
+  --bg-subtle: #E8F2FA;
+  --bg-navy-card: #24364B;
+
+  --text-primary: #24364B;
+  --text-secondary: #60758A;
+  --text-muted: #8295A8;
+  --text-inverse: #FFFFFF;
+  --text-inverse-muted: #E8F2FA;
+
+  --border-subtle: #D8E1EA;
+  --border-medium: #C6D4E1;
+  --border-focus: #438A9A;
+  --border-highlight: #A6CEE8;
+
+  /* Status Colors */
+  --status-success: #1E7E55;
+  --status-success-bg: #EAF7F0;
+  --status-warning: #B8731F;
+  --status-warning-bg: #FEF8ED;
+  --status-danger: #C0392B;
+  --status-danger-bg: #FDF1F0;
+  --status-neutral: #438A9A;
+  --status-neutral-bg: #E8F2FA;
+
+  /* Typography */
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+
+  /* Elevation & Restrained Shadows */
+  --shadow-xs: 0 1px 2px rgba(36, 54, 75, 0.04);
+  --shadow-sm: 0 1px 3px rgba(36, 54, 75, 0.05), 0 3px 8px rgba(36, 54, 75, 0.03);
+  --shadow-md: 0 4px 14px rgba(36, 54, 75, 0.06), 0 1px 3px rgba(36, 54, 75, 0.04);
+  --shadow-lg: 0 10px 28px rgba(36, 54, 75, 0.08), 0 2px 6px rgba(36, 54, 75, 0.04);
+  --shadow-orbital: 0 0 36px rgba(67, 138, 154, 0.18);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Base Reset & Smoothness */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(ellipse at 85% 0%, rgba(232, 242, 250, 0.75) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 35%, rgba(216, 235, 248, 0.45) 0%, transparent 45%);
+  background-attachment: fixed;
+}
+
+/* Headings */
+h1, h2, h3, h4, .font-serif {
+  font-family: var(--font-serif);
+  color: var(--color-navy);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: clamp(2.2rem, 4.5vw, 3.4rem);
+  font-weight: 800;
+}
+
+h2 {
+  font-size: clamp(1.7rem, 3.2vw, 2.3rem);
+  font-weight: 700;
+}
+
+h3 {
+  font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+}
+
+p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--color-teal);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-navy);
+}
+
+/* Layout Containers */
+.orbis-container {
+  width: 100%;
+  max-width: 1240px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background-color: var(--color-navy);
+  color: var(--color-white);
+  border-color: var(--color-navy);
+  box-shadow: 0 4px 12px rgba(47, 67, 90, 0.2);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-navy-dark);
+  border-color: var(--color-navy-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(47, 67, 90, 0.28);
+}
+
+.btn-secondary {
+  background-color: var(--bg-surface);
+  color: var(--color-navy);
+  border-color: var(--border-medium);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-icy-blue);
+  border-color: var(--color-teal);
+  color: var(--color-navy-dark);
+}
+
+.btn-teal {
+  background-color: var(--color-teal);
+  color: var(--color-white);
+}
+
+.btn-teal:hover {
+  background-color: var(--color-teal-dark);
+  transform: translateY(-1px);
+}
+
+.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.82rem;
+  border-radius: var(--radius-sm);
+}
+
+.btn-lg {
+  padding: 0.85rem 1.75rem;
+  font-size: 1.05rem;
+  border-radius: var(--radius-lg);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Cards */
+.orbis-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.orbis-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-highlight);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-demo {
+  background-color: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+}
+
+.badge-live {
+  background-color: var(--status-success-bg);
+  color: var(--status-success);
+  border: 1px solid #A7F3D0;
+}
+
+.badge-icy, .badge-sky {
+  background-color: var(--color-icy-blue);
+  color: var(--color-navy);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Orbital Animations */
+@keyframes orbit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes pulse-gentle {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+.animate-orbit {
+  animation: orbit-spin 40s linear infinite;
+}
+
+.animate-orbit-reverse {
+  animation: orbit-spin-reverse 55s linear infinite;
+}
+
+.animate-pulse-gentle {
+  animation: pulse-gentle 4s ease-in-out infinite;
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Modal backdrop & content */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 45, 61, 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.modal-dialog {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-medium);
+  box-shadow: var(--shadow-lg);
+  max-width: 680px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  padding: 2rem;
+}
+
+/* Print Styles for PDF / Report Generation */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  .no-print, header, nav, footer, .btn-print-hide {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .orbis-card {
+    border: 1px solid #CCC !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .modal-dialog {
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .modal-overlay {
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+  }
+}

@@ -1,0 +1,863 @@
+import React, { useState, useEffect } from 'react';
+import { QualityAnalysisResult, QualityCheck } from '../types/quality';
+import { QualityEngine } from '../services/qualityEngine';
+import { StorageService } from '../services/storageService';
+import { DEMO_PRE_EVALUATED_ANALYSIS } from '../data/demoData';
+import { GitHubApiError } from '../services/githubApi';
+import {
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  HelpCircle,
+  ExternalLink,
+  Printer,
+  Copy,
+  Bookmark,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Info,
+} from 'lucide-react';
+
+interface QualityAnalysisViewProps {
+  initialOwner?: string;
+  initialRepo?: string;
+  initialAnalysis?: QualityAnalysisResult | null;
+  onOpenPrintReport: (analysis: QualityAnalysisResult) => void;
+  onOpenSettings: () => void;
+}
+
+export const QualityAnalysisView: React.FC<QualityAnalysisViewProps> = ({
+  initialOwner = 'shadcn-ui',
+  initialRepo = 'ui',
+  initialAnalysis = null,
+  onOpenPrintReport,
+  onOpenSettings,
+}) => {
+  const [repoInput, setRepoInput] = useState(
+    initialAnalysis ? initialAnalysis.repoFullName : `${initialOwner}/${initialRepo}`
+  );
+  const [analysis, setAnalysis] = useState<QualityAnalysisResult | null>(initialAnalysis);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [snapshotSaved, setSnapshotSaved] = useState(false);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'passed' | 'failed' | 'partial' | 'unverifiable'>('all');
+
+  const runAnalysis = async (owner: string, repo: string) => {
+    const cleanOwner = owner.trim();
+    const cleanRepo = repo.trim();
+    if (!cleanOwner || !cleanRepo) return;
+
+    setLoading(true);
+    setError(null);
+    setSnapshotSaved(false);
+
+    const fullKey = `${cleanOwner}/${cleanRepo}`;
+
+    try {
+      const result = await QualityEngine.evaluateRepository(cleanOwner, cleanRepo);
+      setAnalysis(result);
+    } catch (err) {
+      if (err instanceof GitHubApiError) {
+        if (err.status === 404) {
+          setError(`Repository "${fullKey}" was not found on GitHub.`);
+        } else if (err.status === 403) {
+          // Check if we have pre-evaluated demo analysis for this repository
+          if (DEMO_PRE_EVALUATED_ANALYSIS[fullKey]) {
+            setAnalysis(DEMO_PRE_EVALUATED_ANALYSIS[fullKey]);
+            setError(
+              'GitHub API rate limit reached. Displaying pre-evaluated demonstration analysis snapshot. Add a token in settings for live audits.'
+            );
+          } else {
+            setError(
+              'GitHub API rate limit exceeded (60 req/hr unauthenticated). Please wait for the hourly reset or add a token in settings.'
+            );
+          }
+        } else {
+          setError(err.message);
+        }
+      } else {
+        // Check demo dataset fallback
+        if (DEMO_PRE_EVALUATED_ANALYSIS[fullKey]) {
+          setAnalysis(DEMO_PRE_EVALUATED_ANALYSIS[fullKey]);
+        } else {
+          setError((err as Error).message);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialAnalysis) {
+      setAnalysis(initialAnalysis);
+      setRepoInput(initialAnalysis.repoFullName);
+    } else if (initialOwner && initialRepo) {
+      setRepoInput(`${initialOwner}/${initialRepo}`);
+      runAnalysis(initialOwner, initialRepo);
+    }
+  }, [initialOwner, initialRepo, initialAnalysis]);
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = repoInput.trim();
+    if (!trimmed.includes('/')) {
+      setError('Please provide the repository in "owner/repo" format (e.g., shadcn-ui/ui or torvalds/linux).');
+      return;
+    }
+    const [owner, repo] = trimmed.split('/');
+    runAnalysis(owner, repo);
+  };
+
+  const handleSaveSnapshot = () => {
+    if (!analysis) return;
+    StorageService.saveSnapshot(analysis);
+    setSnapshotSaved(true);
+    setTimeout(() => setSnapshotSaved(false), 2500);
+  };
+
+  const handleCopySummary = () => {
+    if (!analysis) return;
+    const summaryMarkdown = [
+      `# ORBIS Quality Index: ${analysis.repoFullName}`,
+      `**Assessed on:** ${new Date(analysis.assessedAt).toLocaleDateString()} | **Score:** ${analysis.overallScore}/100 (Grade ${analysis.grade})`,
+      `**Verdict:** ${analysis.gradeDescription}`,
+      '',
+      '### Categories Breakdown:',
+      ...analysis.categories.map((c) => `- **${c.title}:** ${c.earnedScore}/${c.maxWeight} pts (${c.percentage}%)`),
+      '',
+      '### Key Diagnostics & Actionable Checks:',
+      ...analysis.checks.map(
+        (chk) => `- [${chk.status.toUpperCase()}] **${chk.title}** (${chk.earnedPoints}/${chk.weight} pts): ${chk.evidence}`
+      ),
+      '',
+      '*Generated by ORBIS — GitHub Repository Intelligence Platform*',
+    ].join('\n');
+
+    navigator.clipboard.writeText(summaryMarkdown).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  const handleLoadDemo = () => {
+    setRepoInput('shadcn-ui/ui');
+    setAnalysis(DEMO_PRE_EVALUATED_ANALYSIS['shadcn-ui/ui']);
+    setError(null);
+  };
+
+  // Filtered checks
+  const filteredChecks = (analysis?.checks || []).filter((c) => {
+    const matchesCategory = activeCategoryFilter === 'all' || c.category === activeCategoryFilter;
+    const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+    return matchesCategory && matchesStatus;
+  });
+
+  // Grade color helper
+  const getGradeColor = (grade: string) => {
+    switch (grade) {
+      case 'A+':
+      case 'A':
+        return { bg: 'var(--status-success-bg)', text: 'var(--status-success)', border: '#A7F3D0' };
+      case 'B':
+        return { bg: 'var(--color-icy-blue)', text: 'var(--color-navy)', border: 'var(--color-teal)' };
+      case 'C':
+        return { bg: 'var(--status-warning-bg)', text: 'var(--status-warning)', border: '#FDE68A' };
+      default:
+        return { bg: 'var(--status-danger-bg)', text: 'var(--status-danger)', border: '#FECACA' };
+    }
+  };
+
+  return (
+    <div className="orbis-container" style={{ paddingTop: '2.5rem', paddingBottom: '4rem' }}>
+      {/* Page Header - Clean, professional, no 'Signature Feature' badge */}
+      <div style={{ maxWidth: '780px', margin: '0 auto 2rem auto', textAlign: 'center' }}>
+        <h2 style={{ marginBottom: '0.4rem', color: 'var(--color-navy)' }}>Repository Quality</h2>
+        <p style={{ marginBottom: '1.25rem', color: 'var(--text-secondary)' }}>
+          Deterministic scoring across documentation, licensing, CI automation, test coverage, and hygiene.
+        </p>
+
+        {/* Input Form */}
+        <form
+          onSubmit={handleFormSubmit}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: 'var(--bg-surface)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '0.35rem 0.5rem 0.35rem 1.15rem',
+            boxShadow: 'var(--shadow-sm)',
+            gap: '0.5rem',
+          }}
+        >
+          <Search size={20} color="var(--color-teal)" style={{ flexShrink: 0 }} />
+          <input
+            type="text"
+            value={repoInput}
+            onChange={(e) => setRepoInput(e.target.value)}
+            placeholder="Enter repository in owner/repo format (e.g. facebook/react)..."
+            style={{
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: '0.96rem',
+              color: 'var(--text-primary)',
+              width: '100%',
+              fontFamily: 'var(--font-sans)',
+            }}
+            aria-label="Repository identifier"
+          />
+          <button type="submit" disabled={loading || !repoInput.trim()} className="btn btn-primary btn-sm" style={{ padding: '0.55rem 1.25rem' }}>
+            {loading ? 'Evaluating...' : 'Analyze Quality'}
+          </button>
+        </form>
+
+        {/* Quick Suggestions */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+            Quick Audits:
+          </span>
+          <button
+            onClick={() => {
+              setRepoInput('shadcn-ui/ui');
+              runAnalysis('shadcn-ui', 'ui');
+            }}
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-full)',
+              padding: '0.18rem 0.6rem',
+              fontSize: '0.76rem',
+              color: 'var(--color-navy)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-icy-blue)')}
+            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface)')}
+          >
+            shadcn-ui/ui
+          </button>
+          <button
+            onClick={() => {
+              setRepoInput('torvalds/linux');
+              runAnalysis('torvalds', 'linux');
+            }}
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-full)',
+              padding: '0.18rem 0.6rem',
+              fontSize: '0.76rem',
+              color: 'var(--color-navy)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = 'var(--color-icy-blue)')}
+            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface)')}
+          >
+            torvalds/linux
+          </button>
+        </div>
+      </div>
+
+      {/* Demo Warning Banner */}
+      {analysis?.isDemoData && (
+        <div
+          style={{
+            backgroundColor: '#FEF3C7',
+            border: '1px solid #FDE68A',
+            color: '#92400E',
+            borderRadius: 'var(--radius-md)',
+            padding: '0.85rem 1.25rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <Sparkles size={18} />
+            <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+              <strong>Pre-evaluated Demonstration Snapshot:</strong> Showing curated audit data for{' '}
+              <code>{analysis.repoFullName}</code>. This snapshot is not live API data.
+            </span>
+          </div>
+          <button onClick={onOpenSettings} className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem' }}>
+            Token Settings
+          </button>
+        </div>
+      )}
+
+      {/* Error Banner */}
+      {error && !analysis?.isDemoData && (
+        <div
+          style={{
+            backgroundColor: 'var(--status-danger-bg)',
+            border: '1px solid #FECACA',
+            color: 'var(--status-danger)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1rem 1.25rem',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <AlertTriangle size={20} />
+            <span style={{ fontSize: '0.88rem' }}>{error}</span>
+          </div>
+          {error.includes('rate limit') && (
+            <button onClick={handleLoadDemo} className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem' }}>
+              Load Demo Audit
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+          <div className="animate-orbit" style={{ display: 'inline-block', marginBottom: '1rem' }}>
+            <RefreshCw size={38} color="var(--color-teal)" />
+          </div>
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem' }}>
+            Auditing {repoInput}...
+          </h3>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+            Inspecting repository tree, licensing SPDX headers, automated CI workflows, and documentation depth.
+          </p>
+        </div>
+      )}
+
+      {/* Active Analysis View */}
+      {!loading && analysis && (
+        <div>
+          {/* 1. Main Score Card & Action Toolbar */}
+          <div
+            className="orbis-card"
+            style={{
+              padding: '2rem',
+              marginBottom: '2rem',
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              gap: '2.5rem',
+              alignItems: 'center',
+            }}
+          >
+            {/* Left: Circular Orbital Score Gauge */}
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div
+                style={{
+                  position: 'relative',
+                  width: '160px',
+                  height: '160px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="160" height="160" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    stroke="var(--border-subtle)"
+                    strokeWidth="10"
+                    fill="none"
+                  />
+                  <circle
+                    cx="80"
+                    cy="80"
+                    r="68"
+                    stroke={
+                      analysis.overallScore >= 80
+                        ? 'var(--status-success)'
+                        : analysis.overallScore >= 60
+                        ? 'var(--color-teal)'
+                        : 'var(--status-danger)'
+                    }
+                    strokeWidth="10"
+                    strokeDasharray={2 * Math.PI * 68}
+                    strokeDashoffset={2 * Math.PI * 68 * (1 - analysis.overallScore / 100)}
+                    strokeLinecap="round"
+                    fill="none"
+                    style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                  />
+                </svg>
+
+                {/* Score in Center */}
+                <div style={{ position: 'absolute', textAlign: 'center' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-serif)',
+                      fontSize: '2.5rem',
+                      fontWeight: 800,
+                      color: 'var(--color-navy)',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {analysis.overallScore}
+                  </div>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    OUT OF 100
+                  </span>
+                </div>
+              </div>
+
+              {/* Grade Badge */}
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  padding: '0.35rem 1rem',
+                  borderRadius: 'var(--radius-full)',
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  backgroundColor: getGradeColor(analysis.grade).bg,
+                  color: getGradeColor(analysis.grade).text,
+                  border: `1px solid ${getGradeColor(analysis.grade).border}`,
+                }}
+              >
+                Grade {analysis.grade}
+              </div>
+            </div>
+
+            {/* Right: Repository Overview & Actions */}
+            <div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <h3 style={{ fontSize: '1.8rem', margin: 0, color: 'var(--color-navy)' }}>
+                  {analysis.repoFullName}
+                </h3>
+                <a
+                  href={`https://github.com/${analysis.repoFullName}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: 'var(--color-teal)', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+                  title="View repository on GitHub"
+                >
+                  <ExternalLink size={16} />
+                </a>
+              </div>
+
+              {/* Repo Metadata Chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem', marginBottom: '0.85rem' }}>
+                <span className="badge badge-icy" style={{ fontSize: '0.74rem' }}>
+                  ★ {analysis.repoMetadata.stars.toLocaleString()} stars
+                </span>
+                <span className="badge badge-icy" style={{ fontSize: '0.74rem' }}>
+                  {analysis.repoMetadata.forks.toLocaleString()} forks
+                </span>
+                {analysis.repoMetadata.language && (
+                  <span className="badge badge-icy" style={{ fontSize: '0.74rem' }}>
+                    {analysis.repoMetadata.language}
+                  </span>
+                )}
+                <span
+                  className="badge"
+                  style={{
+                    fontSize: '0.74rem',
+                    backgroundColor: analysis.repoMetadata.licenseName ? 'var(--status-success-bg)' : 'var(--status-danger-bg)',
+                    color: analysis.repoMetadata.licenseName ? 'var(--status-success)' : 'var(--status-danger)',
+                  }}
+                >
+                  {analysis.repoMetadata.licenseName || 'No License'}
+                </span>
+                {analysis.repoMetadata.lastPushed && (
+                  <span className="badge badge-icy" style={{ fontSize: '0.74rem' }}>
+                    Active: {new Date(analysis.repoMetadata.lastPushed).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+
+              <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '1rem' }}>
+                {analysis.gradeDescription}
+              </p>
+
+              {/* Summary Stats Row */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1.25rem',
+                  fontSize: '0.82rem',
+                  color: 'var(--text-secondary)',
+                  paddingTop: '0.85rem',
+                  borderTop: '1px solid var(--border-subtle)',
+                  marginBottom: '1.25rem',
+                }}
+              >
+                <div>
+                  Checks Passed: <strong>{analysis.summary.passedChecks}</strong> / {analysis.summary.totalChecks}
+                </div>
+                <div>
+                  Missing Checks: <strong style={{ color: analysis.summary.failedChecks > 0 ? 'var(--status-danger)' : 'inherit' }}>{analysis.summary.failedChecks}</strong>
+                </div>
+                {analysis.summary.unverifiableChecks > 0 && (
+                  <div>
+                    Unverifiable: <strong>{analysis.summary.unverifiableChecks}</strong>
+                  </div>
+                )}
+                <div>
+                  Audited: <strong>{new Date(analysis.assessedAt).toLocaleDateString()}</strong>
+                </div>
+              </div>
+
+              {/* Action Buttons Toolbar */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
+                <button onClick={handleSaveSnapshot} className="btn btn-secondary btn-sm">
+                  <Bookmark size={15} />
+                  {snapshotSaved ? 'Snapshot Saved!' : 'Save Snapshot'}
+                </button>
+                <button onClick={() => onOpenPrintReport(analysis)} className="btn btn-secondary btn-sm">
+                  <Printer size={15} /> Print / Export PDF
+                </button>
+                <button onClick={handleCopySummary} className="btn btn-secondary btn-sm">
+                  <Copy size={15} />
+                  {copied ? 'Summary Copied!' : 'Copy Summary'}
+                </button>
+                <button
+                  onClick={() => {
+                    const [o, r] = analysis.repoFullName.split('/');
+                    runAnalysis(o, r);
+                  }}
+                  className="btn btn-secondary btn-sm"
+                  title="Recheck live repository"
+                >
+                  <RefreshCw size={14} /> Recheck Live
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Optional Expandable Methodology */}
+          <details
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: '0.75rem 1.25rem',
+              marginBottom: '2rem',
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <summary
+              style={{
+                cursor: 'pointer',
+                fontWeight: 600,
+                color: 'var(--color-navy)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                userSelect: 'none',
+              }}
+            >
+              <Info size={15} color="var(--color-teal)" />
+              Scoring Methodology & Verification Signals
+            </summary>
+            <p style={{ marginTop: '0.65rem', marginBottom: 0, lineHeight: 1.5 }}>
+              The Repository Quality Index deterministically inspects public structural hygiene: README documentation,
+              SPDX license classification, automated CI configuration, test specs, lockfiles, and recent commit velocity.
+            </p>
+          </details>
+
+          {/* 3. Category Score Breakdown */}
+          <div style={{ marginBottom: '2.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <h3 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--color-navy)' }}>Category Breakdown</h3>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Click a category to filter diagnostics below</span>
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '0.85rem',
+              }}
+            >
+              {analysis.categories.map((cat) => (
+                <div
+                  key={cat.category}
+                  className="orbis-card"
+                  style={{
+                    padding: '1.15rem 1.25rem',
+                    cursor: 'pointer',
+                    borderColor: activeCategoryFilter === cat.category ? 'var(--color-teal)' : 'var(--border-subtle)',
+                    backgroundColor:
+                      activeCategoryFilter === cat.category ? 'var(--color-icy-blue)' : 'var(--bg-surface)',
+                    boxShadow: activeCategoryFilter === cat.category ? 'var(--shadow-md)' : 'var(--shadow-xs)',
+                  }}
+                  onClick={() => setActiveCategoryFilter(activeCategoryFilter === cat.category ? 'all' : cat.category)}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--color-navy)' }}>
+                      {cat.title}
+                    </span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--color-teal)' }}>
+                      {cat.earnedScore} / {cat.maxWeight} pts
+                    </span>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div
+                    style={{
+                      height: '6px',
+                      backgroundColor: 'var(--border-subtle)',
+                      borderRadius: 'var(--radius-full)',
+                      overflow: 'hidden',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${cat.percentage}%`,
+                        height: '100%',
+                        backgroundColor:
+                          cat.percentage >= 80
+                            ? 'var(--status-success)'
+                            : cat.percentage >= 50
+                            ? 'var(--color-teal)'
+                            : 'var(--status-danger)',
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <span>{cat.passedCount} of {cat.checkCount} checks passed</span>
+                    <span style={{ fontWeight: 600 }}>{cat.percentage}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 4. Individual Checks & Actionable Diagnostics */}
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '1rem',
+                marginBottom: '1.25rem',
+              }}
+            >
+              <div>
+                <h3 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--color-navy)' }}>
+                  Diagnostics & Checks ({filteredChecks.length})
+                </h3>
+                {activeCategoryFilter !== 'all' && (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--color-teal)', marginTop: '0.2rem' }}>
+                    Filtered by category:{' '}
+                    <strong>{analysis.categories.find((c) => c.category === activeCategoryFilter)?.title}</strong>{' '}
+                    <button
+                      onClick={() => setActiveCategoryFilter('all')}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--color-navy)',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        padding: 0,
+                        marginLeft: '0.4rem',
+                      }}
+                    >
+                      (Show all)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Status Filters with live counts */}
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  style={{
+                    background: statusFilter === 'all' ? 'var(--color-navy)' : 'var(--bg-surface)',
+                    color: statusFilter === 'all' ? '#FFFFFF' : 'var(--text-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-full)',
+                    padding: '0.25rem 0.65rem',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  All ({analysis.checks.length})
+                </button>
+                <button
+                  onClick={() => setStatusFilter('passed')}
+                  style={{
+                    background: statusFilter === 'passed' ? 'var(--status-success)' : 'var(--bg-surface)',
+                    color: statusFilter === 'passed' ? '#FFFFFF' : 'var(--status-success)',
+                    border: `1px solid ${statusFilter === 'passed' ? 'var(--status-success)' : 'var(--border-subtle)'}`,
+                    borderRadius: 'var(--radius-full)',
+                    padding: '0.25rem 0.65rem',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Passed ({analysis.summary.passedChecks})
+                </button>
+                <button
+                  onClick={() => setStatusFilter('failed')}
+                  style={{
+                    background: statusFilter === 'failed' ? 'var(--status-danger)' : 'var(--bg-surface)',
+                    color: statusFilter === 'failed' ? '#FFFFFF' : 'var(--status-danger)',
+                    border: `1px solid ${statusFilter === 'failed' ? 'var(--status-danger)' : 'var(--border-subtle)'}`,
+                    borderRadius: 'var(--radius-full)',
+                    padding: '0.25rem 0.65rem',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Missing Checks ({analysis.summary.failedChecks})
+                </button>
+                {analysis.summary.unverifiableChecks > 0 && (
+                  <button
+                    onClick={() => setStatusFilter('unverifiable')}
+                    style={{
+                      background: statusFilter === 'unverifiable' ? 'var(--color-navy)' : 'var(--bg-surface)',
+                      color: statusFilter === 'unverifiable' ? '#FFFFFF' : 'var(--text-muted)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-full)',
+                      padding: '0.25rem 0.65rem',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Unverifiable ({analysis.summary.unverifiableChecks})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Checklist Items */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {filteredChecks.map((chk: QualityCheck) => {
+                const getStatusIcon = (status: string) => {
+                  switch (status) {
+                    case 'passed':
+                      return <CheckCircle2 size={20} color="var(--status-success)" />;
+                    case 'failed':
+                      return <XCircle size={20} color="var(--status-danger)" />;
+                    case 'partial':
+                      return <AlertTriangle size={20} color="var(--status-warning)" />;
+                    default:
+                      return <HelpCircle size={20} color="var(--text-muted)" />;
+                  }
+                };
+
+                return (
+                  <div
+                    key={chk.id}
+                    className="orbis-card"
+                    style={{
+                      padding: '1.25rem 1.5rem',
+                      borderLeft: `4px solid ${
+                        chk.status === 'passed'
+                          ? 'var(--status-success)'
+                          : chk.status === 'partial'
+                          ? 'var(--status-warning)'
+                          : chk.status === 'failed'
+                          ? 'var(--status-danger)'
+                          : 'var(--text-muted)'
+                      }`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        {getStatusIcon(chk.status)}
+                        <h4 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--color-navy)' }}>
+                          {chk.title}
+                        </h4>
+                      </div>
+                      <span
+                        className="badge"
+                        style={{
+                          backgroundColor:
+                            chk.status === 'passed'
+                              ? 'var(--status-success-bg)'
+                              : chk.status === 'partial'
+                              ? 'var(--status-warning-bg)'
+                              : 'var(--status-danger-bg)',
+                          color:
+                            chk.status === 'passed'
+                              ? 'var(--status-success)'
+                              : chk.status === 'partial'
+                              ? 'var(--status-warning)'
+                              : 'var(--status-danger)',
+                        }}
+                      >
+                        {chk.earnedPoints} / {chk.weight} pts
+                      </span>
+                    </div>
+
+                    {/* Evidence Snippet */}
+                    <div
+                      style={{
+                        backgroundColor: 'var(--bg-subtle)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.5rem 0.75rem',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-primary)',
+                        marginBottom: '0.75rem',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <strong>Evidence:</strong> {chk.evidence}
+                    </div>
+
+                    {/* Explanation (Why it matters) */}
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', lineHeight: 1.5 }}>
+                      <strong>Why this matters:</strong> {chk.explanation}
+                    </p>
+
+                    {/* Recommendation & Remediation link */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        paddingTop: '0.5rem',
+                        borderTop: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.82rem', color: 'var(--color-teal)' }}>
+                        <strong>Actionable Improvement:</strong> {chk.recommendation}
+                      </span>
+                      {chk.remediationLink && (
+                        <a
+                          href={chk.remediationLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
+                        >
+                          Resolve on GitHub <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
